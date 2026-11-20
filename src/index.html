@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telco Churn & SHAP Intelligence</title>
+  <style>
+    :root { --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --muted: #94a3b8; --accent: #38bdf8; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 24px; }
+    .container { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .card { background: var(--card); border-radius: 14px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+    h1 { grid-column: 1 / -1; margin: 0 0 8px; font-size: 1.6rem; }
+    .subtitle { grid-column: 1 / -1; color: var(--muted); margin: -16px 0 8px; font-size: 0.95rem; }
+    .grid-form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    label { display: flex; flex-direction: column; font-size: 0.82rem; color: var(--muted); gap: 6px; }
+    select, input { background: #0f172a; color: var(--text); border: 1px solid #334155; border-radius: 8px; padding: 10px; font-size: 0.9rem; }
+    button { grid-column: 1 / -1; background: var(--accent); color: #0f172a; font-weight: 700; border: none; border-radius: 8px; padding: 12px; cursor: pointer; font-size: 1rem; margin-top: 8px; }
+    button:hover { opacity: 0.9; }
+    .prob-box { text-align: center; padding: 16px; border-radius: 10px; background: #0f172a; margin-bottom: 18px; }
+    .prob-num { font-size: 2.8rem; font-weight: 800; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; }
+    .high { background: rgba(239,68,68,0.2); color: #f87171; }
+    .medium { background: rgba(245,158,11,0.2); color: #fbbf24; }
+    .low { background: rgba(34,197,94,0.2); color: #4ade80; }
+    .factor-row { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 10px 14px; border-radius: 8px; margin-bottom: 8px; font-size: 0.9rem; }
+    .full-width { grid-column: 1 / -1; }
+    @media (max-width: 800px) { .container { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Telco Customer Churn & SHAP Explainer</h1>
+    <p class="subtitle">Adjust the top 8 behavioral & billing drivers below (minor background attributes are auto-filled) to see live LightGBM probabilities and local SHAP explanations.</p>
+
+    <!-- LEFT: SMART 8-FEATURE CONTROLS -->
+    <div class="card">
+      <h3 style="margin-top:0">Key Customer Drivers</h3>
+      <form id="churnForm" class="grid-form">
+        <label>Contract Type
+          <select id="Contract">
+            <option value="Month-to-month" selected>Month-to-month</option>
+            <option value="One year">One year</option>
+            <option value="Two year">Two year</option>
+          </select>
+        </label>
+        <label>Tenure (Months): <span id="tenureVal">3</span>
+          <input type="range" id="tenure" min="0" max="72" value="3" oninput="tenureVal.textContent=this.value" />
+        </label>
+        <label>Monthly Charges ($): <span id="chargeVal">85</span>
+          <input type="range" id="MonthlyCharges" min="18" max="120" step="0.5" value="85" oninput="chargeVal.textContent=this.value" />
+        </label>
+        <label>Internet Service
+          <select id="InternetService">
+            <option value="Fiber optic" selected>Fiber optic</option>
+            <option value="DSL">DSL</option>
+            <option value="No">No</option>
+          </select>
+        </label>
+        <label>Online Security
+          <select id="OnlineSecurity">
+            <option value="No" selected>No</option>
+            <option value="Yes">Yes</option>
+            <option value="No internet service">No internet service</option>
+          </select>
+        </label>
+        <label>Tech Support
+          <select id="TechSupport">
+            <option value="No" selected>No</option>
+            <option value="Yes">Yes</option>
+            <option value="No internet service">No internet service</option>
+          </select>
+        </label>
+        <label>Payment Method
+          <select id="PaymentMethod">
+            <option value="Electronic check" selected>Electronic check</option>
+            <option value="Mailed check">Mailed check</option>
+            <option value="Bank transfer (automatic)">Bank transfer (automatic)</option>
+            <option value="Credit card (automatic)">Credit card (automatic)</option>
+          </select>
+        </label>
+        <label>Senior Citizen
+          <select id="SeniorCitizen">
+            <option value="0" selected>No (0)</option>
+            <option value="1">Yes (1)</option>
+          </select>
+        </label>
+        <button type="submit">Run Live Prediction & SHAP</button>
+      </form>
+    </div>
+
+    <!-- RIGHT: LIVE PREDICTION + LOCAL SHAP -->
+    <div class="card">
+      <h3 style="margin-top:0">Live Prediction & Risk Factors</h3>
+      <div class="prob-box">
+        <div style="color:var(--muted); font-size:0.85rem;">CHURN PROBABILITY</div>
+        <div class="prob-num" id="probDisplay">--%</div>
+        <span class="badge" id="tierBadge">Waiting...</span>
+      </div>
+      <div style="color:var(--muted); font-size:0.85rem; margin-bottom:10px;">TOP LOCAL SHAP RISK DRIVERS</div>
+      <div id="factorsList"></div>
+    </div>
+
+    <!-- BOTTOM: GLOBAL SHAP CHART -->
+    <div class="card full-width">
+      <h3 style="margin-top:0">Global Model Drivers (Mean |SHAP| Impact Across Test Set)</h3>
+      <div id="globalChart"></div>
+    </div>
+  </div>
+
+    <script>
+    const globalDrivers = [
+  { label: "Contract: Month-to-month", val: 0.6538 },
+  { label: "Tenure", val: 0.3253 },
+  { label: "Online Security: No", val: 0.2576 },
+  { label: "Contract: Two year", val: 0.2076 },
+  { label: "Fiber Optic Internet", val: 0.1930 },
+  { label: "Monthly Charges", val: 0.1774 },
+  { label: "Tech Support: No", val: 0.1765 },
+  { label: "Electronic Check", val: 0.1631 }
+];
+
+document.getElementById("globalChart").innerHTML = globalDrivers.map(d => {
+  const pct = (d.val / 0.70) * 100;
+  return `
+    <div style="margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
+        <span>${d.label}</span><span style="color:#38bdf8; font-weight:700;">${d.val.toFixed(4)}</span>
+      </div>
+      <div style="background:#0f172a; border-radius:6px; height:10px; overflow:hidden;">
+        <div style="background:#38bdf8; width:${pct}%; height:100%;"></div>
+      </div>
+    </div>`;
+}).join("");
+
+
+    async function runPrediction(e) {
+      if (e) e.preventDefault();
+      try {
+        const tenure = Number(document.getElementById("tenure").value);
+        const monthly = Number(document.getElementById("MonthlyCharges").value);
+        const internet = document.getElementById("InternetService").value;
+
+                const payload = {
+          customerID: "DEMO-USER-01",
+          SeniorCitizen: Number(document.getElementById("SeniorCitizen").value),
+          tenure: tenure,
+          InternetService: internet,
+          OnlineSecurity: internet === "No" ? "No internet service" : document.getElementById("OnlineSecurity").value,
+          TechSupport: internet === "No" ? "No internet service" : document.getElementById("TechSupport").value,
+          Contract: document.getElementById("Contract").value,
+          PaymentMethod: document.getElementById("PaymentMethod").value,
+          MonthlyCharges: monthly
+        };
+
+
+        const res = await fetch("/predict", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        document.getElementById("probDisplay").textContent = (data.churn_probability * 100).toFixed(1) + "%";
+        const badge = document.getElementById("tierBadge");
+        badge.textContent = data.risk_tier + " risk";
+        badge.className = "badge " + data.risk_tier;
+
+        document.getElementById("factorsList").innerHTML = data.top_risk_factors.map(f => {
+          const isPos = String(f.impact).startsWith("+");
+          return `<div class="factor-row"><span>${f.feature}</span><strong style="color:${isPos ? '#f87171' : '#4ade80'}">${f.impact}</strong></div>`;
+        }).join("");
+      } catch (err) {
+        document.getElementById("tierBadge").textContent = "JS Error: " + err.message;
+      }
+    }
+
+    document.getElementById("churnForm").addEventListener("submit", runPrediction);
+    runPrediction();
+  </script>
+
+</body>
+</html>
