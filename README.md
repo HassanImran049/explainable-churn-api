@@ -14,6 +14,11 @@ Evaluated via **5-Fold Stratified Cross-Validation** and a **20% hold-out test s
 | **Linear SVM** | Custom NumPy (Weighted Hinge Loss & Sub-Gradient Descent) | 0.8330 | 0.8240 | ~0.4 ms |
 | **LightGBM (Tuned)** | `LGBMClassifier` (`RandomizedSearchCV` + `class_weight="balanced"`) | **0.8487** | **0.8048** | **11.39 ms** |
 
+## Interactive Dashboard Preview
+
+![Subscription Churn Dashboard](assets/dashboard.png)
+![SHAP Dashboard](assets/dashboard-shap.png)
+
 ---
 
 ## The Business Problem
